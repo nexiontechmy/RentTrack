@@ -59,9 +59,9 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _tenants.isEmpty
-              ? const Center(
+              ? Center(
                   child: Text('Add a tenant to see analytics here.',
-                      style: TextStyle(color: Colors.black54)),
+                      style: TextStyle(color: AppColors.subtleText(context))),
                 )
               : RefreshIndicator(
                   onRefresh: _load,
@@ -180,7 +180,8 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
                 style: const TextStyle(
                     fontSize: 16, fontWeight: FontWeight.bold)),
             Text(label,
-                style: const TextStyle(fontSize: 11, color: Colors.black54)),
+                style: TextStyle(
+                    fontSize: 11, color: AppColors.subtleText(context))),
           ],
         ),
       ),

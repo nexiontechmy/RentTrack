@@ -169,10 +169,10 @@ class _TenantsScreenState extends State<TenantsScreen> {
               style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 8),
-            const Text(
+            Text(
               'Add a tenant to start tracking their rent payments.',
               textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.black54),
+              style: TextStyle(color: AppColors.subtleText(context)),
             ),
             const SizedBox(height: 24),
             ElevatedButton(

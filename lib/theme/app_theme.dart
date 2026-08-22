@@ -26,6 +26,11 @@ class AppColors {
         return unpaid;
     }
   }
+
+  /// Theme-aware muted/secondary text color — readable in both light and
+  /// dark mode, unlike a hardcoded Colors.black54.
+  static Color subtleText(BuildContext context) =>
+      Theme.of(context).colorScheme.onSurfaceVariant;
 }
 
 class AppTheme {

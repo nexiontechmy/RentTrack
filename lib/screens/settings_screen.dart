@@ -7,6 +7,7 @@ import 'package:share_plus/share_plus.dart';
 import '../models/rent_settings.dart';
 import '../services/excel_service.dart';
 import '../services/settings_service.dart';
+import '../theme/app_theme.dart';
 import '../theme/theme_controller.dart';
 import '../widgets/gradient_app_bar.dart';
 
@@ -188,9 +189,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                     const SizedBox(height: 24),
                     _sectionTitle('Rent Reminder'),
-                    const Text(
+                    Text(
                       'Day of the month to send a recurring payment reminder',
-                      style: TextStyle(color: Colors.black54),
+                      style: TextStyle(color: AppColors.subtleText(context)),
                     ),
                     const SizedBox(height: 8),
                     _ReminderDayPicker(
@@ -219,10 +220,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     _darkModeToggle(),
                     const SizedBox(height: 32),
                     _sectionTitle('Backup & Restore'),
-                    const Text(
+                    Text(
                       'Export every tenant and payment to an Excel file, '
                       'or import one to restore/replace your data.',
-                      style: TextStyle(color: Colors.black54),
+                      style: TextStyle(color: AppColors.subtleText(context)),
                     ),
                     const SizedBox(height: 12),
                     Row(

@@ -279,14 +279,14 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
                 const SizedBox(height: 8),
                 if (currentMonthPayment == null)
-                  const Text('No payment recorded for this month yet.',
-                      style: TextStyle(color: Colors.black54))
+                  Text('No payment recorded for this month yet.',
+                      style: TextStyle(color: AppColors.subtleText(context)))
                 else
                   Text(
                     'Due ${_settings.currencySymbol} ${currentMonthPayment.amountDue.toStringAsFixed(2)}  ·  '
                     'Paid ${_settings.currencySymbol} ${currentMonthPayment.amountPaid.toStringAsFixed(2)}  ·  '
                     'Balance ${_settings.currencySymbol} ${currentMonthPayment.balance.toStringAsFixed(2)}',
-                    style: const TextStyle(color: Colors.black54),
+                    style: TextStyle(color: AppColors.subtleText(context)),
                   ),
               ],
             ),
@@ -298,11 +298,11 @@ class _HomeScreenState extends State<HomeScreen> {
               style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
         ),
         if (_payments.isEmpty)
-          const Padding(
-            padding: EdgeInsets.all(32),
+          Padding(
+            padding: const EdgeInsets.all(32),
             child: Center(
               child: Text('No payments yet. Tap + to add one.',
-                  style: TextStyle(color: Colors.black54)),
+                  style: TextStyle(color: AppColors.subtleText(context))),
             ),
           )
         else
@@ -313,11 +313,11 @@ class _HomeScreenState extends State<HomeScreen> {
               style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
         ),
         if (_charges.isEmpty)
-          const Padding(
-            padding: EdgeInsets.all(32),
+          Padding(
+            padding: const EdgeInsets.all(32),
             child: Center(
               child: Text('No extra charges recorded.',
-                  style: TextStyle(color: Colors.black54)),
+                  style: TextStyle(color: AppColors.subtleText(context))),
             ),
           )
         else
@@ -340,7 +340,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 style: const TextStyle(
                     fontSize: 16, fontWeight: FontWeight.bold)),
             Text(label,
-                style: const TextStyle(fontSize: 11, color: Colors.black54)),
+                style: TextStyle(
+                    fontSize: 11, color: AppColors.subtleText(context))),
           ],
         ),
       ),
