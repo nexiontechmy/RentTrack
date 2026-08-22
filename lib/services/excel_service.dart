@@ -1,0 +1,219 @@
+import 'dart:io';
+
+import 'package:excel/excel.dart';
+import 'package:intl/intl.dart';
+import 'package:path_provider/path_provider.dart';
+
+import '../models/charge.dart';
+import '../models/payment.dart';
+import '../models/tenant.dart';
+import 'charge_repository.dart';
+import 'payment_repository.dart';
+import 'tenant_repository.dart';
+
+/// Exports/imports every tenant, payment, and charge record to/from a
+/// single .xlsx file, for backup and restore.
+class ExcelService {
+  final TenantRepository tenantRepository;
+  final PaymentRepository paymentRepository;
+  final ChargeRepository chargeRepository;
+
+  ExcelService({
+    TenantRepository? tenantRepository,
+    PaymentRepository? paymentRepository,
+    ChargeRepository? chargeRepository,
+  })  : tenantRepository = tenantRepository ?? TenantRepository(),
+        paymentRepository = paymentRepository ?? PaymentRepository(),
+        chargeRepository = chargeRepository ?? ChargeRepository();
+
+  static const _tenantHeaders = [
+    'id',
+    'name',
+    'phone',
+    'propertyDescription',
+    'monthlyRent',
+  ];
+
+  static const _paymentHeaders = [
+    'id',
+    'tenantId',
+    'month',
+    'amountDue',
+    'amountPaid',
+    'status',
+    'paidDate',
+    'referenceNumber',
+    'notes',
+  ];
+
+  static const _chargeHeaders = [
+    'id',
+    'tenantId',
+    'description',
+    'amount',
+    'amountPaid',
+    'status',
+    'date',
+    'paidDate',
+    'notes',
+  ];
+
+  /// Builds the backup workbook and writes it to a temp file. Returns the
+  /// file, ready to be shared.
+  Future<File> exportToFile() async {
+    final tenants = await tenantRepository.getAll();
+    final payments = await paymentRepository.getAll();
+    final charges = await chargeRepository.getAll();
+
+    final workbook = Excel.createExcel();
+    final defaultSheetName = workbook.getDefaultSheet();
+
+    final tenantsSheet = workbook['Tenants'];
+    tenantsSheet.appendRow(_tenantHeaders.map(TextCellValue.new).toList());
+    for (final tenant in tenants) {
+      tenantsSheet.appendRow([
+        TextCellValue(tenant.id),
+        TextCellValue(tenant.name),
+        TextCellValue(tenant.phone),
+        TextCellValue(tenant.propertyDescription),
+        DoubleCellValue(tenant.monthlyRent),
+      ]);
+    }
+
+    final paymentsSheet = workbook['Payments'];
+    paymentsSheet.appendRow(_paymentHeaders.map(TextCellValue.new).toList());
+    for (final payment in payments) {
+      paymentsSheet.appendRow([
+        TextCellValue(payment.id),
+        TextCellValue(payment.tenantId),
+        TextCellValue(payment.month),
+        DoubleCellValue(payment.amountDue),
+        DoubleCellValue(payment.amountPaid),
+        TextCellValue(payment.status),
+        TextCellValue(payment.paidDate),
+        TextCellValue(payment.referenceNumber),
+        TextCellValue(payment.notes),
+      ]);
+    }
+
+    final chargesSheet = workbook['Charges'];
+    chargesSheet.appendRow(_chargeHeaders.map(TextCellValue.new).toList());
+    for (final charge in charges) {
+      chargesSheet.appendRow([
+        TextCellValue(charge.id),
+        TextCellValue(charge.tenantId),
+        TextCellValue(charge.description),
+        DoubleCellValue(charge.amount),
+        DoubleCellValue(charge.amountPaid),
+        TextCellValue(charge.status),
+        TextCellValue(charge.date),
+        TextCellValue(charge.paidDate),
+        TextCellValue(charge.notes),
+      ]);
+    }
+
+    if (defaultSheetName != null &&
+        defaultSheetName != 'Tenants' &&
+        defaultSheetName != 'Payments' &&
+        defaultSheetName != 'Charges') {
+      workbook.delete(defaultSheetName);
+    }
+
+    final bytes = workbook.encode();
+    if (bytes == null) {
+      throw StateError('Failed to encode backup workbook');
+    }
+
+    final dir = await getTemporaryDirectory();
+    final timestamp = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
+    final file = File('${dir.path}/RentTrack_backup_$timestamp.xlsx');
+    await file.writeAsBytes(bytes, flush: true);
+    return file;
+  }
+
+  /// Reads a backup .xlsx file and replaces all local tenants, payments,
+  /// and charges with its contents.
+  Future<void> importFromFile(File file) async {
+    final bytes = await file.readAsBytes();
+    final workbook = Excel.decodeBytes(bytes);
+
+    final tenantsSheet = workbook['Tenants'];
+    final tenants = <Tenant>[];
+    for (final row in tenantsSheet.rows.skip(1)) {
+      if (row.isEmpty || row[0]?.value == null) continue;
+      tenants.add(Tenant(
+        id: _cellString(row, 0),
+        name: _cellString(row, 1),
+        phone: _cellString(row, 2),
+        propertyDescription: _cellString(row, 3),
+        monthlyRent: _cellDouble(row, 4),
+      ));
+    }
+
+    final paymentsSheet = workbook['Payments'];
+    final payments = <Payment>[];
+    for (final row in paymentsSheet.rows.skip(1)) {
+      if (row.isEmpty || row[0]?.value == null) continue;
+      payments.add(Payment(
+        id: _cellString(row, 0),
+        tenantId: _cellString(row, 1),
+        month: _cellString(row, 2),
+        amountDue: _cellDouble(row, 3),
+        amountPaid: _cellDouble(row, 4),
+        status: _cellString(row, 5),
+        paidDate: _cellString(row, 6),
+        referenceNumber: _cellString(row, 7),
+        notes: _cellString(row, 8),
+      ));
+    }
+
+    final charges = <Charge>[];
+    final chargesSheetOrNull = workbook.sheets['Charges'];
+    if (chargesSheetOrNull != null) {
+      for (final row in chargesSheetOrNull.rows.skip(1)) {
+        if (row.isEmpty || row[0]?.value == null) continue;
+        charges.add(Charge(
+          id: _cellString(row, 0),
+          tenantId: _cellString(row, 1),
+          description: _cellString(row, 2),
+          amount: _cellDouble(row, 3),
+          amountPaid: _cellDouble(row, 4),
+          status: _cellString(row, 5),
+          date: _cellString(row, 6),
+          paidDate: _cellString(row, 7),
+          notes: _cellString(row, 8),
+        ));
+      }
+    }
+
+    await tenantRepository.replaceAll(tenants);
+    await paymentRepository.replaceAll(payments);
+    await chargeRepository.replaceAll(charges);
+  }
+
+  String _cellString(List<Data?> row, int index) {
+    if (index >= row.length) return '';
+    final value = row[index]?.value;
+    return switch (value) {
+      null => '',
+      TextCellValue() => value.value.toString(),
+      IntCellValue() => value.value.toString(),
+      DoubleCellValue() => value.value.toString(),
+      BoolCellValue() => value.value.toString(),
+      _ => value.toString(),
+    };
+  }
+
+  double _cellDouble(List<Data?> row, int index) {
+    if (index >= row.length) return 0.0;
+    final value = row[index]?.value;
+    return switch (value) {
+      null => 0.0,
+      DoubleCellValue() => value.value,
+      IntCellValue() => value.value.toDouble(),
+      TextCellValue() =>
+        double.tryParse(value.value.toString()) ?? 0.0,
+      _ => double.tryParse(value.toString()) ?? 0.0,
+    };
+  }
+}
