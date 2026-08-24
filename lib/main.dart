@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import 'screens/main_shell.dart';
+import 'services/notification_service.dart';
+import 'services/settings_service.dart';
 import 'theme/app_theme.dart';
 import 'theme/theme_controller.dart';
 
@@ -22,6 +24,14 @@ class _RentTrackAppState extends State<RentTrackApp> {
   void initState() {
     super.initState();
     _themeController.load();
+    _reconcileReminder();
+  }
+
+  Future<void> _reconcileReminder() async {
+    final settings = await SettingsService().load();
+    if (settings.isConfigured) {
+      await NotificationService().scheduleMonthlyReminder(settings.reminderDay);
+    }
   }
 
   @override

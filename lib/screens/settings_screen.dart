@@ -6,6 +6,7 @@ import 'package:share_plus/share_plus.dart';
 
 import '../models/rent_settings.dart';
 import '../services/excel_service.dart';
+import '../services/notification_service.dart';
 import '../services/settings_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/theme_controller.dart';
@@ -23,12 +24,14 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   final _settingsService = SettingsService();
   final _excelService = ExcelService();
+  final _notificationService = NotificationService();
   final _formKey = GlobalKey<FormState>();
 
   bool _loading = true;
   bool _saving = false;
   bool _exporting = false;
   bool _importing = false;
+  bool _testingNotification = false;
 
   final _landlordNameController = TextEditingController();
   final _landlordPhoneController = TextEditingController();
@@ -69,6 +72,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
 
     await _settingsService.save(settings);
+    await _notificationService.requestPermission();
+    await _notificationService.scheduleMonthlyReminder(_reminderDay);
 
     if (!mounted) return;
     setState(() => _saving = false);
@@ -76,6 +81,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Settings saved')),
     );
+  }
+
+  Future<void> _sendTestNotification() async {
+    setState(() => _testingNotification = true);
+    try {
+      await _notificationService.requestPermission();
+      await _notificationService.showTestNotification();
+    } finally {
+      if (mounted) setState(() => _testingNotification = false);
+    }
   }
 
   Future<void> _exportBackup() async {
@@ -197,6 +212,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     _ReminderDayPicker(
                       value: _reminderDay,
                       onChanged: (day) => setState(() => _reminderDay = day),
+                    ),
+                    const SizedBox(height: 12),
+                    OutlinedButton.icon(
+                      onPressed:
+                          _testingNotification ? null : _sendTestNotification,
+                      icon: _testingNotification
+                          ? const SizedBox(
+                              height: 16,
+                              width: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2))
+                          : const Icon(Icons.notifications_active_outlined),
+                      label: const Text('Send Test Notification'),
                     ),
                     const SizedBox(height: 32),
                     SizedBox(
