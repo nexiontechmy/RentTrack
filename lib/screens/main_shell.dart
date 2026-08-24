@@ -19,17 +19,24 @@ class MainShell extends StatefulWidget {
 class _MainShellState extends State<MainShell> {
   int _index = 0;
 
+  Widget _buildTab(int index) {
+    switch (index) {
+      case 0:
+        return const TenantsScreen();
+      case 1:
+        return const AnalysisScreen();
+      default:
+        return SettingsScreen(themeController: widget.themeController);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: IndexedStack(
-        index: _index,
-        children: [
-          const TenantsScreen(),
-          const AnalysisScreen(),
-          SettingsScreen(themeController: widget.themeController),
-        ],
-      ),
+      // Rebuilt fresh (not IndexedStack) so each tab reloads its data
+      // every time it's selected, instead of showing stale state from
+      // when the app first launched.
+      body: _buildTab(_index),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _index,
         onDestinationSelected: (index) => setState(() => _index = index),
