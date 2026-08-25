@@ -2,6 +2,20 @@
 
 A multi-tenant rent payment tracker built with Flutter. Manage tenants, record monthly rent payments and one-off charges, generate PDF invoices, and back up everything to Excel — all stored locally on your device.
 
+<p align="center">
+  <img src="assets/icon/app_icon.png" width="96" alt="RentTrack icon">
+</p>
+
+## Screenshots
+
+| Home | Tenant Dashboard | Invoice |
+|---|---|---|
+| ![Home tab](docs/screenshots/home.png) | ![Tenant dashboard](docs/screenshots/tenant_dashboard.png) | ![Invoice PDF](docs/screenshots/invoice.png) |
+
+| Add Payment | Analysis | Settings (Dark Mode) |
+|---|---|---|
+| ![Add payment form](docs/screenshots/add_payment.png) | ![Analysis tab](docs/screenshots/analysis.png) | ![Settings dark mode](docs/screenshots/settings_dark.png) |
+
 ## Features
 
 - **Multi-tenant management** — add, edit, and remove tenants, each with their own independent payment history.

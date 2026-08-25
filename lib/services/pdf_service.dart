@@ -315,7 +315,7 @@ class PdfService {
         pw.Divider(color: PdfColors.grey300, thickness: 0.75),
         pw.SizedBox(height: 8),
         pw.Text(
-          'Thank you${settings.landlordName.isEmpty ? '' : ' — ${settings.landlordName}'}',
+          'Thank you${settings.landlordName.isEmpty ? '' : ' - ${settings.landlordName}'}',
           style: pw.TextStyle(
               fontSize: 9, color: _slate, fontStyle: pw.FontStyle.italic),
         ),
