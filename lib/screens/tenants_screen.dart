@@ -5,6 +5,7 @@ import '../models/payment.dart';
 import '../models/tenant.dart';
 import '../services/charge_repository.dart';
 import '../services/payment_repository.dart';
+import '../services/rent_scheduler.dart';
 import '../services/settings_service.dart';
 import '../services/tenant_repository.dart';
 import '../theme/app_theme.dart';
@@ -28,6 +29,7 @@ class _TenantsScreenState extends State<TenantsScreen> {
   final _paymentRepository = PaymentRepository();
   final _chargeRepository = ChargeRepository();
   final _settingsService = SettingsService();
+  final _rentScheduler = RentScheduler();
 
   bool _loading = true;
   List<Tenant> _tenants = [];
@@ -43,6 +45,9 @@ class _TenantsScreenState extends State<TenantsScreen> {
 
   Future<void> _load() async {
     setState(() => _loading = true);
+    // Bring rent records up to the current month before reading, so the
+    // arrears figures below reflect rent that is owed but not yet logged.
+    await _rentScheduler.reconcile();
     final tenants = await _tenantRepository.getAll();
     final payments = await _paymentRepository.getAll();
     final charges = await _chargeRepository.getAll();
@@ -269,28 +274,22 @@ class _TenantsScreenState extends State<TenantsScreen> {
         ),
         title: Text(tenant.name,
             style: const TextStyle(fontWeight: FontWeight.w600)),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              currentPayment == null
-                  ? 'This month not recorded'
-                  : 'Due ${Currency.format(_currencySymbol, currentPayment.amountDue)}'
-                      '  ·  Bal ${Currency.format(_currencySymbol, currentPayment.balance)}',
-              style: TextStyle(color: AppColors.subtleText(context)),
-            ),
-            if (outstanding > 0)
-              Padding(
-                padding: const EdgeInsets.only(top: 2),
-                child: Text(
-                  'Owes ${Currency.format(_currencySymbol, outstanding)}'
-                  '${overdueMonths > 0 ? '  ·  $overdueMonths ${overdueMonths == 1 ? 'month' : 'months'} overdue' : ''}',
-                  style: const TextStyle(
-                      color: AppColors.unpaid, fontWeight: FontWeight.w600),
-                ),
+        // One line, one message. When a tenant owes, the arrears are the
+        // only thing worth saying; repeating this month's due/balance
+        // alongside it just wrapped the card into an unreadable block.
+        subtitle: outstanding > 0
+            ? Text(
+                'Owes ${Currency.format(_currencySymbol, outstanding)}'
+                '${overdueMonths > 0 ? '  ·  $overdueMonths ${overdueMonths == 1 ? 'mo' : 'mos'} overdue' : ''}',
+                style: const TextStyle(
+                    color: AppColors.unpaid, fontWeight: FontWeight.w600),
+              )
+            : Text(
+                currentPayment == null
+                    ? 'This month not recorded'
+                    : 'Paid ${Currency.format(_currencySymbol, currentPayment.amountPaid)}',
+                style: TextStyle(color: AppColors.subtleText(context)),
               ),
-          ],
-        ),
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [

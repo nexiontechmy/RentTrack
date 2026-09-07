@@ -22,8 +22,24 @@ class MonthUtils {
   static bool isBeforeCurrentMonth(String label) {
     final parsed = tryParse(label);
     if (parsed == null) return false;
+    return parsed.isBefore(currentMonth());
+  }
+
+  /// The current month, normalised to day 1 for safe comparison.
+  static DateTime currentMonth() {
     final now = DateTime.now();
-    final current = DateTime(now.year, now.month);
-    return parsed.isBefore(current);
+    return DateTime(now.year, now.month);
+  }
+
+  /// Steps [months] forward, rolling the year over as needed. Always
+  /// lands on day 1, so it never overflows short months the way
+  /// DateTime(y, m, 31) would.
+  static DateTime addMonths(DateTime date, int months) {
+    final zeroBased = date.month - 1 + months;
+    // Floor division, not truncating (~/): going backwards past January
+    // gives a negative index, and ~/ rounds toward zero, which would
+    // leave the year unchanged (Feb 2026 - 3 => Nov 2026, not Nov 2025).
+    final yearShift = (zeroBased / 12).floor();
+    return DateTime(date.year + yearShift, (zeroBased % 12) + 1);
   }
 }

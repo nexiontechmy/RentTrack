@@ -39,6 +39,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final _currencySymbolController = TextEditingController();
 
   int _reminderDay = 1;
+  bool _autoCreateMonthlyRent = true;
 
   @override
   void initState() {
@@ -53,6 +54,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _landlordAddressController.text = settings.landlordAddress;
     _currencySymbolController.text = settings.currencySymbol;
     _reminderDay = settings.reminderDay;
+    _autoCreateMonthlyRent = settings.autoCreateMonthlyRent;
     setState(() => _loading = false);
   }
 
@@ -69,6 +71,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ? 'RM'
           : _currencySymbolController.text.trim(),
       reminderDay: _reminderDay,
+      autoCreateMonthlyRent: _autoCreateMonthlyRent,
     );
 
     await _settingsService.save(settings);
@@ -201,6 +204,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     _textField(
                       controller: _currencySymbolController,
                       label: 'Currency symbol',
+                    ),
+                    const SizedBox(height: 24),
+                    _sectionTitle('Monthly Rent'),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('Auto-create monthly rent records'),
+                      subtitle: Text(
+                        'Each tenant is billed automatically when a new '
+                        'month starts, so unpaid rent shows up even if you '
+                        'have not logged it yet.',
+                        style: TextStyle(color: AppColors.subtleText(context)),
+                      ),
+                      value: _autoCreateMonthlyRent,
+                      onChanged: (value) =>
+                          setState(() => _autoCreateMonthlyRent = value),
                     ),
                     const SizedBox(height: 24),
                     _sectionTitle('Rent Reminder'),

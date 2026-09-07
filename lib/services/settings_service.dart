@@ -9,6 +9,7 @@ class SettingsService {
   static const _landlordAddressKey = 'landlordAddress';
   static const _currencySymbolKey = 'currencySymbol';
   static const _reminderDayKey = 'reminderDay';
+  static const _autoCreateMonthlyRentKey = 'autoCreateMonthlyRent';
 
   Future<RentSettings> load() async {
     final prefs = await SharedPreferences.getInstance();
@@ -18,6 +19,8 @@ class SettingsService {
       landlordAddress: prefs.getString(_landlordAddressKey) ?? '',
       currencySymbol: prefs.getString(_currencySymbolKey) ?? 'RM',
       reminderDay: prefs.getInt(_reminderDayKey) ?? 1,
+      autoCreateMonthlyRent:
+          prefs.getBool(_autoCreateMonthlyRentKey) ?? true,
     );
   }
 
@@ -28,5 +31,7 @@ class SettingsService {
     await prefs.setString(_landlordAddressKey, settings.landlordAddress);
     await prefs.setString(_currencySymbolKey, settings.currencySymbol);
     await prefs.setInt(_reminderDayKey, settings.reminderDay);
+    await prefs.setBool(
+        _autoCreateMonthlyRentKey, settings.autoCreateMonthlyRent);
   }
 }

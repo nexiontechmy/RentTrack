@@ -39,6 +39,15 @@ class PaymentRepository {
     await _saveAll(payments);
   }
 
+  /// Bulk insert in a single read/write, rather than re-serialising the
+  /// whole store once per record.
+  Future<void> addAll(List<Payment> newPayments) async {
+    if (newPayments.isEmpty) return;
+    final payments = await getAll();
+    payments.addAll(newPayments);
+    await _saveAll(payments);
+  }
+
   Future<void> update(Payment payment) async {
     final payments = await getAll();
     final index = payments.indexWhere((p) => p.id == payment.id);
