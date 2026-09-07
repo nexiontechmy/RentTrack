@@ -8,6 +8,8 @@ import '../services/payment_repository.dart';
 import '../services/settings_service.dart';
 import '../services/tenant_repository.dart';
 import '../theme/app_theme.dart';
+import '../utils/currency.dart';
+import '../utils/month_utils.dart';
 import '../widgets/gradient_app_bar.dart';
 
 /// Analysis tab: cross-tenant payment analytics.
@@ -42,6 +44,8 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
     final payments = await _paymentRepository.getAll();
     final charges = await _chargeRepository.getAll();
     final settings = await _settingsService.load();
+    tenants.sort(
+        (a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
     if (!mounted) return;
     setState(() {
       _tenants = tenants;
@@ -51,6 +55,8 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
       _loading = false;
     });
   }
+
+  String _money(double amount) => Currency.format(_currencySymbol, amount);
 
   @override
   Widget build(BuildContext context) {
@@ -71,11 +77,18 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
   }
 
   Widget _content() {
-    final totalCollected =
+    final rentCollected =
         _payments.fold<double>(0, (sum, p) => sum + p.amountPaid);
-    final totalDue = _payments.fold<double>(0, (sum, p) => sum + p.amountDue);
-    final paidCount = _payments.where((p) => p.status == 'Paid').length;
-    final unpaidCount = _payments.where((p) => p.status != 'Paid').length;
+    final chargesCollected =
+        _charges.fold<double>(0, (sum, c) => sum + c.amountPaid);
+
+    var outstanding = 0.0;
+    for (final p in _payments) {
+      if (p.balance > 0) outstanding += p.balance;
+    }
+    for (final c in _charges) {
+      if (c.balance > 0) outstanding += c.balance;
+    }
 
     return ListView(
       padding: const EdgeInsets.only(bottom: 24),
@@ -86,16 +99,16 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
             children: [
               Expanded(
                 child: _statCard(
-                  'Total Collected',
-                  '$_currencySymbol ${totalCollected.toStringAsFixed(2)}',
+                  'Rent Collected',
+                  _money(rentCollected),
                   Icons.savings_outlined,
                 ),
               ),
               const SizedBox(width: 12),
               Expanded(
                 child: _statCard(
-                  'Total Due',
-                  '$_currencySymbol ${totalDue.toStringAsFixed(2)}',
+                  'Charges Collected',
+                  _money(chargesCollected),
                   Icons.receipt_long_outlined,
                 ),
               ),
@@ -107,28 +120,26 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
           child: Row(
             children: [
               Expanded(
-                child: _statCard('Paid Records', '$paidCount',
-                    Icons.check_circle_outline,
-                    color: AppColors.paid),
+                child: _statCard(
+                  'Total Outstanding',
+                  _money(outstanding),
+                  Icons.account_balance_wallet_outlined,
+                  color: outstanding > 0 ? AppColors.unpaid : AppColors.paid,
+                ),
               ),
               const SizedBox(width: 12),
               Expanded(
-                child: _statCard('Unpaid Records', '$unpaidCount',
-                    Icons.error_outline,
-                    color: AppColors.unpaid),
+                child: _statCard(
+                  'Total Received',
+                  _money(rentCollected + chargesCollected),
+                  Icons.trending_up,
+                  color: AppColors.paid,
+                ),
               ),
             ],
           ),
         ),
-        if (_charges.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-            child: _statCard(
-              'Charges Collected',
-              '$_currencySymbol ${_charges.fold<double>(0, (sum, c) => sum + c.amountPaid).toStringAsFixed(2)}',
-              Icons.receipt_long_outlined,
-            ),
-          ),
+        _monthlyBreakdown(),
         const Padding(
           padding: EdgeInsets.fromLTRB(20, 16, 16, 8),
           child: Text('By Tenant',
@@ -139,28 +150,120 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
     );
   }
 
+  /// Rent collected per month, most recent first, with a proportional bar
+  /// so months can be compared at a glance.
+  Widget _monthlyBreakdown() {
+    if (_payments.isEmpty) return const SizedBox.shrink();
+
+    final byMonth = <String, double>{};
+    for (final payment in _payments) {
+      byMonth[payment.month] = (byMonth[payment.month] ?? 0) + payment.amountPaid;
+    }
+
+    final months = byMonth.keys.toList()
+      ..sort((a, b) {
+        final dateA = MonthUtils.tryParse(a);
+        final dateB = MonthUtils.tryParse(b);
+        if (dateA == null || dateB == null) return 0;
+        return dateB.compareTo(dateA); // newest first
+      });
+
+    final maxValue =
+        byMonth.values.fold<double>(0, (max, v) => v > max ? v : max);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Padding(
+          padding: EdgeInsets.fromLTRB(20, 16, 16, 8),
+          child: Text('Collected by Month',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+        ),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            child: Column(
+              children: months.take(12).map((month) {
+                final value = byMonth[month]!;
+                final fraction = maxValue == 0 ? 0.0 : value / maxValue;
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(month, style: const TextStyle(fontSize: 13)),
+                          Text(_money(value),
+                              style: const TextStyle(
+                                  fontSize: 13, fontWeight: FontWeight.w600)),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(4),
+                        child: LinearProgressIndicator(
+                          value: fraction,
+                          minHeight: 6,
+                          backgroundColor:
+                              AppColors.navyLight.withValues(alpha: 0.15),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _tenantBreakdownCard(Tenant tenant) {
     final tenantPayments =
         _payments.where((p) => p.tenantId == tenant.id).toList();
     final tenantCharges =
         _charges.where((c) => c.tenantId == tenant.id).toList();
+
     final collected =
-        tenantPayments.fold<double>(0, (sum, p) => sum + p.amountPaid);
-    final balance = tenantPayments.fold<double>(0, (sum, p) => sum + p.balance);
+        tenantPayments.fold<double>(0, (sum, p) => sum + p.amountPaid) +
+            tenantCharges.fold<double>(0, (sum, c) => sum + c.amountPaid);
+
+    var outstanding = 0.0;
+    for (final p in tenantPayments) {
+      if (p.balance > 0) outstanding += p.balance;
+    }
+    for (final c in tenantCharges) {
+      if (c.balance > 0) outstanding += c.balance;
+    }
+
     final paidCount = tenantPayments.where((p) => p.status == 'Paid').length;
     final unpaidCount = tenantPayments.where((p) => p.status != 'Paid').length;
-    final chargesBalance =
-        tenantCharges.fold<double>(0, (sum, c) => sum + c.balance);
 
     return Card(
       child: ListTile(
         title: Text(tenant.name,
             style: const TextStyle(fontWeight: FontWeight.w600)),
-        subtitle: Text(
-          'Collected $_currencySymbol${collected.toStringAsFixed(2)}  ·  '
-          'Balance $_currencySymbol${balance.toStringAsFixed(2)}  ·  '
-          '$paidCount paid / $unpaidCount unpaid'
-          '${tenantCharges.isEmpty ? '' : '\nCharges balance $_currencySymbol${chargesBalance.toStringAsFixed(2)}'}',
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Collected ${_money(collected)}  ·  '
+              '$paidCount paid / $unpaidCount unpaid',
+              style: TextStyle(color: AppColors.subtleText(context)),
+            ),
+            if (outstanding > 0)
+              Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: Text(
+                  'Outstanding ${_money(outstanding)}',
+                  style: const TextStyle(
+                      color: AppColors.unpaid, fontWeight: FontWeight.w600),
+                ),
+              ),
+          ],
         ),
       ),
     );
@@ -176,9 +279,13 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
           children: [
             Icon(icon, color: color ?? AppColors.navyLight, size: 22),
             const SizedBox(height: 8),
-            Text(value,
-                style: const TextStyle(
-                    fontSize: 16, fontWeight: FontWeight.bold)),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text(value,
+                  style: const TextStyle(
+                      fontSize: 16, fontWeight: FontWeight.bold)),
+            ),
             Text(label,
                 style: TextStyle(
                     fontSize: 11, color: AppColors.subtleText(context))),

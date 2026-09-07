@@ -1,3 +1,5 @@
+import 'payment_status.dart';
+
 /// A one-off, non-rent charge billed to a tenant (utility bill,
 /// maintenance, deposit, etc.).
 class Charge {
@@ -6,7 +8,6 @@ class Charge {
   final String description;
   final double amount;
   final double amountPaid;
-  final String status; // "Paid" | "Partial" | "Unpaid"
   final String date; // when the charge was billed, yyyy-MM-dd
   final String paidDate;
   final String notes;
@@ -17,13 +18,16 @@ class Charge {
     required this.description,
     required this.amount,
     required this.amountPaid,
-    required this.status,
     required this.date,
     required this.paidDate,
     required this.notes,
   });
 
   double get balance => amount - amountPaid;
+
+  /// Derived, never stored — see [PaymentStatus].
+  String get status =>
+      PaymentStatus.of(amountDue: amount, amountPaid: amountPaid);
 
   Map<String, dynamic> toJson() {
     return {
@@ -46,7 +50,6 @@ class Charge {
       description: json['description']?.toString() ?? '',
       amount: _toDouble(json['amount']),
       amountPaid: _toDouble(json['amountPaid']),
-      status: json['status']?.toString() ?? 'Unpaid',
       date: json['date']?.toString() ?? '',
       paidDate: json['paidDate']?.toString() ?? '',
       notes: json['notes']?.toString() ?? '',

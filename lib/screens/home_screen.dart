@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 
 import '../models/charge.dart';
 import '../models/payment.dart';
@@ -8,6 +9,7 @@ import '../services/charge_repository.dart';
 import '../services/payment_repository.dart';
 import '../services/settings_service.dart';
 import '../theme/app_theme.dart';
+import '../utils/currency.dart';
 import '../utils/month_utils.dart';
 import '../widgets/gradient_app_bar.dart';
 import '../widgets/status_badge.dart';
@@ -64,6 +66,9 @@ class _HomeScreenState extends State<HomeScreen> {
       _loading = false;
     });
   }
+
+  String _money(double amount) =>
+      Currency.format(_settings.currencySymbol, amount);
 
   Future<void> _showAddMenu() async {
     final choice = await showModalBottomSheet<String>(
@@ -126,6 +131,20 @@ class _HomeScreenState extends State<HomeScreen> {
     if (result == true) _load();
   }
 
+  /// Settles a record in one tap — the overwhelmingly common action —
+  /// instead of opening the form to retype the same number.
+  Future<void> _markPaymentPaid(Payment payment) async {
+    await _repository.update(payment.copyWith(
+      amountPaid: payment.amountDue,
+      paidDate: DateFormat('yyyy-MM-dd').format(DateTime.now()),
+    ));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('${payment.month} marked as paid')),
+    );
+    _load();
+  }
+
   void _openInvoice(Payment payment) {
     Navigator.of(context).push(
       MaterialPageRoute(
@@ -147,8 +166,8 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           TextButton(
             onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Delete',
-                style: TextStyle(color: AppColors.unpaid)),
+            child:
+                const Text('Delete', style: TextStyle(color: AppColors.unpaid)),
           ),
         ],
       ),
@@ -194,6 +213,17 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _dashboardAndList() {
     final totalCollected =
         _payments.fold<double>(0, (sum, p) => sum + p.amountPaid);
+
+    // Arrears across rent and charges, each clamped at zero so an
+    // overpayment in one record can't mask a shortfall in another.
+    var outstanding = 0.0;
+    for (final p in _payments) {
+      if (p.balance > 0) outstanding += p.balance;
+    }
+    for (final c in _charges) {
+      if (c.balance > 0) outstanding += c.balance;
+    }
+
     final paidCount = _payments.where((p) => p.status == 'Paid').length;
     final unpaidCount = _payments.where((p) => p.status != 'Paid').length;
     final overdueCount = _payments
@@ -227,15 +257,22 @@ class _HomeScreenState extends State<HomeScreen> {
           child: Row(
             children: [
               Expanded(
+                child: _statCard('Collected', _money(totalCollected),
+                    Icons.savings_outlined),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
                 child: _statCard(
-                  'Total Collected',
-                  '${_settings.currencySymbol} ${totalCollected.toStringAsFixed(2)}',
-                  Icons.savings_outlined,
+                  'Outstanding',
+                  _money(outstanding),
+                  Icons.account_balance_wallet_outlined,
+                  color: outstanding > 0 ? AppColors.unpaid : AppColors.paid,
                 ),
               ),
               const SizedBox(width: 12),
               Expanded(
-                child: _statCard('Streak', '$streak mo', Icons.local_fire_department),
+                child: _statCard(
+                    'Streak', '$streak mo', Icons.local_fire_department),
               ),
             ],
           ),
@@ -245,7 +282,8 @@ class _HomeScreenState extends State<HomeScreen> {
           child: Row(
             children: [
               Expanded(
-                child: _statCard('Paid', '$paidCount', Icons.check_circle_outline,
+                child: _statCard(
+                    'Paid', '$paidCount', Icons.check_circle_outline,
                     color: AppColors.paid),
               ),
               const SizedBox(width: 12),
@@ -255,7 +293,8 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               const SizedBox(width: 12),
               Expanded(
-                child: _statCard('Overdue', '$overdueCount', Icons.warning_amber,
+                child: _statCard(
+                    'Overdue', '$overdueCount', Icons.warning_amber,
                     color: AppColors.partial),
               ),
             ],
@@ -283,9 +322,9 @@ class _HomeScreenState extends State<HomeScreen> {
                       style: TextStyle(color: AppColors.subtleText(context)))
                 else
                   Text(
-                    'Due ${_settings.currencySymbol} ${currentMonthPayment.amountDue.toStringAsFixed(2)}  ·  '
-                    'Paid ${_settings.currencySymbol} ${currentMonthPayment.amountPaid.toStringAsFixed(2)}  ·  '
-                    'Balance ${_settings.currencySymbol} ${currentMonthPayment.balance.toStringAsFixed(2)}',
+                    'Due ${_money(currentMonthPayment.amountDue)}  ·  '
+                    'Paid ${_money(currentMonthPayment.amountPaid)}  ·  '
+                    'Balance ${_money(currentMonthPayment.balance)}',
                     style: TextStyle(color: AppColors.subtleText(context)),
                   ),
               ],
@@ -336,9 +375,13 @@ class _HomeScreenState extends State<HomeScreen> {
           children: [
             Icon(icon, color: color ?? AppColors.navyLight, size: 22),
             const SizedBox(height: 8),
-            Text(value,
-                style: const TextStyle(
-                    fontSize: 16, fontWeight: FontWeight.bold)),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text(value,
+                  style: const TextStyle(
+                      fontSize: 15, fontWeight: FontWeight.bold)),
+            ),
             Text(label,
                 style: TextStyle(
                     fontSize: 11, color: AppColors.subtleText(context))),
@@ -348,20 +391,26 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  Widget _deleteBackground() {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: BoxDecoration(
+        color: AppColors.unpaid,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      alignment: Alignment.centerRight,
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: const Icon(Icons.delete, color: Colors.white),
+    );
+  }
+
   Widget _paymentListItem(Payment payment) {
+    final settled = payment.balance <= 0;
+
     return Dismissible(
       key: ValueKey(payment.id),
       direction: DismissDirection.endToStart,
-      background: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        decoration: BoxDecoration(
-          color: AppColors.unpaid,
-          borderRadius: BorderRadius.circular(16),
-        ),
-        alignment: Alignment.centerRight,
-        padding: const EdgeInsets.symmetric(horizontal: 20),
-        child: const Icon(Icons.delete, color: Colors.white),
-      ),
+      background: _deleteBackground(),
       confirmDismiss: (_) => _confirmDelete(payment.month),
       onDismissed: (_) => _deletePayment(payment),
       child: Card(
@@ -370,14 +419,16 @@ class _HomeScreenState extends State<HomeScreen> {
           title: Text(payment.month,
               style: const TextStyle(fontWeight: FontWeight.w600)),
           subtitle: Text(
-            'Due ${_settings.currencySymbol}${payment.amountDue.toStringAsFixed(2)}  ·  '
-            'Paid ${_settings.currencySymbol}${payment.amountPaid.toStringAsFixed(2)}  ·  '
-            'Bal ${_settings.currencySymbol}${payment.balance.toStringAsFixed(2)}',
+            'Due ${_money(payment.amountDue)}  ·  '
+            'Paid ${_money(payment.amountPaid)}  ·  '
+            'Bal ${_money(payment.balance)}',
           ),
           leading: StatusBadge(status: payment.status),
           trailing: PopupMenuButton<String>(
             onSelected: (value) async {
-              if (value == 'edit') {
+              if (value == 'paid') {
+                _markPaymentPaid(payment);
+              } else if (value == 'edit') {
                 _openEditPayment(payment);
               } else if (value == 'invoice') {
                 _openInvoice(payment);
@@ -387,10 +438,14 @@ class _HomeScreenState extends State<HomeScreen> {
                 }
               }
             },
-            itemBuilder: (context) => const [
-              PopupMenuItem(value: 'edit', child: Text('Edit')),
-              PopupMenuItem(value: 'invoice', child: Text('View Invoice')),
-              PopupMenuItem(value: 'delete', child: Text('Delete')),
+            itemBuilder: (context) => [
+              if (!settled)
+                const PopupMenuItem(
+                    value: 'paid', child: Text('Mark as paid')),
+              const PopupMenuItem(value: 'edit', child: Text('Edit')),
+              const PopupMenuItem(
+                  value: 'invoice', child: Text('View Invoice')),
+              const PopupMenuItem(value: 'delete', child: Text('Delete')),
             ],
           ),
         ),
@@ -402,16 +457,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return Dismissible(
       key: ValueKey(charge.id),
       direction: DismissDirection.endToStart,
-      background: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        decoration: BoxDecoration(
-          color: AppColors.unpaid,
-          borderRadius: BorderRadius.circular(16),
-        ),
-        alignment: Alignment.centerRight,
-        padding: const EdgeInsets.symmetric(horizontal: 20),
-        child: const Icon(Icons.delete, color: Colors.white),
-      ),
+      background: _deleteBackground(),
       confirmDismiss: (_) => _confirmDelete(charge.description),
       onDismissed: (_) => _deleteCharge(charge),
       child: Card(
@@ -421,8 +467,8 @@ class _HomeScreenState extends State<HomeScreen> {
               style: const TextStyle(fontWeight: FontWeight.w600)),
           subtitle: Text(
             '${charge.date}  ·  '
-            'Amt ${_settings.currencySymbol}${charge.amount.toStringAsFixed(2)}  ·  '
-            'Bal ${_settings.currencySymbol}${charge.balance.toStringAsFixed(2)}',
+            'Amt ${_money(charge.amount)}  ·  '
+            'Bal ${_money(charge.balance)}',
           ),
           leading: StatusBadge(status: charge.status),
           trailing: PopupMenuButton<String>(

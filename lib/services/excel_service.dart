@@ -160,7 +160,9 @@ class ExcelService {
         month: _cellString(row, 2),
         amountDue: _cellDouble(row, 3),
         amountPaid: _cellDouble(row, 4),
-        status: _cellString(row, 5),
+        // Column 5 is the exported status. It is deliberately ignored:
+        // status is always derived from the amounts, so editing amounts
+        // in the spreadsheet can't leave a stale status behind.
         paidDate: _cellString(row, 6),
         referenceNumber: _cellString(row, 7),
         notes: _cellString(row, 8),
@@ -178,7 +180,7 @@ class ExcelService {
           description: _cellString(row, 2),
           amount: _cellDouble(row, 3),
           amountPaid: _cellDouble(row, 4),
-          status: _cellString(row, 5),
+          // Column 5 (status) is derived, not imported — see above.
           date: _cellString(row, 6),
           paidDate: _cellString(row, 7),
           notes: _cellString(row, 8),

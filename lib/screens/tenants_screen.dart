@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../models/charge.dart';
 import '../models/payment.dart';
 import '../models/tenant.dart';
 import '../services/charge_repository.dart';
@@ -7,14 +8,14 @@ import '../services/payment_repository.dart';
 import '../services/settings_service.dart';
 import '../services/tenant_repository.dart';
 import '../theme/app_theme.dart';
+import '../utils/currency.dart';
 import '../utils/month_utils.dart';
 import '../widgets/gradient_app_bar.dart';
 import '../widgets/status_badge.dart';
 import 'home_screen.dart';
 import 'tenant_form_screen.dart';
 
-/// Home tab: overview of every tenant, showing whether this month's
-/// payment is due/paid, plus the tenant list itself.
+/// Home tab: who owes what, across every tenant.
 class TenantsScreen extends StatefulWidget {
   const TenantsScreen({super.key});
 
@@ -31,6 +32,7 @@ class _TenantsScreenState extends State<TenantsScreen> {
   bool _loading = true;
   List<Tenant> _tenants = [];
   List<Payment> _payments = [];
+  List<Charge> _charges = [];
   String _currencySymbol = 'RM';
 
   @override
@@ -43,11 +45,16 @@ class _TenantsScreenState extends State<TenantsScreen> {
     setState(() => _loading = true);
     final tenants = await _tenantRepository.getAll();
     final payments = await _paymentRepository.getAll();
+    final charges = await _chargeRepository.getAll();
     final settings = await _settingsService.load();
+    tenants.sort(
+        (a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+
     if (!mounted) return;
     setState(() {
       _tenants = tenants;
       _payments = payments;
+      _charges = charges;
       _currencySymbol = settings.currencySymbol;
       _loading = false;
     });
@@ -61,6 +68,29 @@ class _TenantsScreenState extends State<TenantsScreen> {
       }
     }
     return null;
+  }
+
+  /// Everything this tenant still owes, rent arrears plus unpaid charges.
+  /// Individual balances are clamped at zero so an overpayment in one
+  /// month can't mask arrears in another.
+  double _outstandingFor(String tenantId) {
+    var total = 0.0;
+    for (final p in _payments) {
+      if (p.tenantId == tenantId && p.balance > 0) total += p.balance;
+    }
+    for (final c in _charges) {
+      if (c.tenantId == tenantId && c.balance > 0) total += c.balance;
+    }
+    return total;
+  }
+
+  int _overdueMonthsFor(String tenantId) {
+    return _payments
+        .where((p) =>
+            p.tenantId == tenantId &&
+            p.balance > 0 &&
+            MonthUtils.isBeforeCurrentMonth(p.month))
+        .length;
   }
 
   Future<void> _openAddTenant() async {
@@ -139,6 +169,7 @@ class _TenantsScreenState extends State<TenantsScreen> {
                   child: ListView(
                     padding: const EdgeInsets.only(top: 8, bottom: 88),
                     children: [
+                      _arrearsSummary(),
                       Padding(
                         padding: const EdgeInsets.fromLTRB(20, 8, 16, 8),
                         child: Text(
@@ -151,6 +182,41 @@ class _TenantsScreenState extends State<TenantsScreen> {
                     ],
                   ),
                 ),
+    );
+  }
+
+  /// A single "who owes me money" line at the top — the reason a landlord
+  /// opens the app. Hidden entirely when everyone is settled up.
+  Widget _arrearsSummary() {
+    final owing =
+        _tenants.where((t) => _outstandingFor(t.id) > 0).toList();
+    if (owing.isEmpty) {
+      return Card(
+        child: ListTile(
+          leading: const Icon(Icons.check_circle, color: AppColors.paid),
+          title: const Text('All settled up',
+              style: TextStyle(fontWeight: FontWeight.w600)),
+          subtitle: Text('No outstanding balances',
+              style: TextStyle(color: AppColors.subtleText(context))),
+        ),
+      );
+    }
+
+    final total = owing.fold<double>(0, (sum, t) => sum + _outstandingFor(t.id));
+    return Card(
+      child: ListTile(
+        leading: const Icon(Icons.account_balance_wallet_outlined,
+            color: AppColors.unpaid),
+        title: Text(
+          Currency.format(_currencySymbol, total),
+          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+        ),
+        subtitle: Text(
+          'Outstanding from ${owing.length} '
+          '${owing.length == 1 ? 'tenant' : 'tenants'}',
+          style: TextStyle(color: AppColors.subtleText(context)),
+        ),
+      ),
     );
   }
 
@@ -188,6 +254,8 @@ class _TenantsScreenState extends State<TenantsScreen> {
   Widget _tenantCard(Tenant tenant) {
     final currentPayment = _currentMonthPaymentFor(tenant.id);
     final status = currentPayment?.status ?? 'Unpaid';
+    final outstanding = _outstandingFor(tenant.id);
+    final overdueMonths = _overdueMonthsFor(tenant.id);
 
     return Card(
       child: ListTile(
@@ -196,15 +264,32 @@ class _TenantsScreenState extends State<TenantsScreen> {
         leading: CircleAvatar(
           backgroundColor: AppColors.navyLight,
           foregroundColor: Colors.white,
-          child: Text(tenant.name.isNotEmpty ? tenant.name[0].toUpperCase() : '?'),
+          child:
+              Text(tenant.name.isNotEmpty ? tenant.name[0].toUpperCase() : '?'),
         ),
         title: Text(tenant.name,
             style: const TextStyle(fontWeight: FontWeight.w600)),
-        subtitle: Text(
-          currentPayment == null
-              ? 'This month not recorded · $_currencySymbol ${tenant.monthlyRent.toStringAsFixed(2)}/mo'
-              : 'Due $_currencySymbol${currentPayment.amountDue.toStringAsFixed(2)}  ·  '
-                  'Bal $_currencySymbol${currentPayment.balance.toStringAsFixed(2)}',
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              currentPayment == null
+                  ? 'This month not recorded'
+                  : 'Due ${Currency.format(_currencySymbol, currentPayment.amountDue)}'
+                      '  ·  Bal ${Currency.format(_currencySymbol, currentPayment.balance)}',
+              style: TextStyle(color: AppColors.subtleText(context)),
+            ),
+            if (outstanding > 0)
+              Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: Text(
+                  'Owes ${Currency.format(_currencySymbol, outstanding)}'
+                  '${overdueMonths > 0 ? '  ·  $overdueMonths ${overdueMonths == 1 ? 'month' : 'months'} overdue' : ''}',
+                  style: const TextStyle(
+                      color: AppColors.unpaid, fontWeight: FontWeight.w600),
+                ),
+              ),
+          ],
         ),
         trailing: Row(
           mainAxisSize: MainAxisSize.min,

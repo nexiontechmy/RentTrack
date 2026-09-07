@@ -1,3 +1,5 @@
+import 'payment_status.dart';
+
 /// A single month's rent payment record, belonging to one tenant.
 class Payment {
   final String id;
@@ -5,7 +7,6 @@ class Payment {
   final String month; // e.g. "August 2026"
   final double amountDue;
   final double amountPaid;
-  final String status; // "Paid" | "Partial" | "Unpaid"
   final String paidDate;
   final String referenceNumber;
   final String notes;
@@ -16,7 +17,6 @@ class Payment {
     required this.month,
     required this.amountDue,
     required this.amountPaid,
-    required this.status,
     required this.paidDate,
     required this.referenceNumber,
     required this.notes,
@@ -24,13 +24,16 @@ class Payment {
 
   double get balance => amountDue - amountPaid;
 
+  /// Derived, never stored — see [PaymentStatus].
+  String get status =>
+      PaymentStatus.of(amountDue: amountDue, amountPaid: amountPaid);
+
   Payment copyWith({
     String? id,
     String? tenantId,
     String? month,
     double? amountDue,
     double? amountPaid,
-    String? status,
     String? paidDate,
     String? referenceNumber,
     String? notes,
@@ -41,15 +44,15 @@ class Payment {
       month: month ?? this.month,
       amountDue: amountDue ?? this.amountDue,
       amountPaid: amountPaid ?? this.amountPaid,
-      status: status ?? this.status,
       paidDate: paidDate ?? this.paidDate,
       referenceNumber: referenceNumber ?? this.referenceNumber,
       notes: notes ?? this.notes,
     );
   }
 
-  /// Serializes to a 9-column row, in the fixed column order used for
-  /// storage and Excel export/import.
+  /// Serializes to a 9-column row for Excel export. `status` is included
+  /// for readability in the spreadsheet but is ignored on import, since
+  /// it is always derived from the amounts.
   List<dynamic> toRow() {
     return [
       id,
@@ -71,8 +74,8 @@ class Payment {
       month: row[2].toString(),
       amountDue: _toDouble(row[3]),
       amountPaid: _toDouble(row[4]),
-      status: row[5].toString(),
-      paidDate: row[6].toString(),
+      // row[5] is the exported status — deliberately ignored.
+      paidDate: row.length > 6 ? row[6].toString() : '',
       referenceNumber: row.length > 7 ? row[7].toString() : '',
       notes: row.length > 8 ? row[8].toString() : '',
     );
@@ -99,7 +102,6 @@ class Payment {
       month: json['month'].toString(),
       amountDue: _toDouble(json['amountDue']),
       amountPaid: _toDouble(json['amountPaid']),
-      status: json['status'].toString(),
       paidDate: json['paidDate']?.toString() ?? '',
       referenceNumber: json['referenceNumber']?.toString() ?? '',
       notes: json['notes']?.toString() ?? '',

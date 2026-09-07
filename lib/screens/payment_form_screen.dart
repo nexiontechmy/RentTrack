@@ -3,13 +3,16 @@ import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 
 import '../models/payment.dart';
+import '../models/payment_status.dart';
 import '../models/rent_settings.dart';
 import '../models/tenant.dart';
 import '../services/payment_repository.dart';
 import '../services/settings_service.dart';
 import '../services/tenant_repository.dart';
+import '../theme/app_theme.dart';
 import '../utils/month_utils.dart';
 import '../widgets/gradient_app_bar.dart';
+import '../widgets/status_badge.dart';
 
 /// A single form used for both adding a new payment and editing an
 /// existing one. Pass [payment] to edit; omit it to add (optionally with
@@ -38,7 +41,6 @@ class _PaymentFormScreenState extends State<PaymentFormScreen> {
   final _referenceNumberController = TextEditingController();
   final _notesController = TextEditingController();
   DateTime? _paidDate;
-  String _status = 'Unpaid';
   String? _tenantId;
 
   RentSettings? _settings;
@@ -56,15 +58,29 @@ class _PaymentFormScreenState extends State<PaymentFormScreen> {
       _amountPaidController.text = payment.amountPaid.toStringAsFixed(2);
       _referenceNumberController.text = payment.referenceNumber;
       _notesController.text = payment.notes;
-      _status = payment.status;
       _paidDate = DateTime.tryParse(payment.paidDate);
       _tenantId = payment.tenantId;
     } else {
       _selectedMonth = DateTime.now();
       _tenantId = widget.initialTenantId;
     }
+
+    // Keep the derived status badge in sync as the amounts are typed.
+    _amountDueController.addListener(_onAmountsChanged);
+    _amountPaidController.addListener(_onAmountsChanged);
+
     _loadInitialData();
   }
+
+  void _onAmountsChanged() => setState(() {});
+
+  double get _amountDue =>
+      double.tryParse(_amountDueController.text.trim()) ?? 0;
+  double get _amountPaid =>
+      double.tryParse(_amountPaidController.text.trim()) ?? 0;
+
+  String get _derivedStatus =>
+      PaymentStatus.of(amountDue: _amountDue, amountPaid: _amountPaid);
 
   Future<void> _loadInitialData() async {
     final settings = await _settingsService.load();
@@ -87,6 +103,21 @@ class _PaymentFormScreenState extends State<PaymentFormScreen> {
         return;
       }
     }
+  }
+
+  String get _tenantName {
+    for (final tenant in _tenants) {
+      if (tenant.id == _tenantId) return tenant.name;
+    }
+    return '';
+  }
+
+  /// One tap for the common case: tenant paid the full amount today.
+  void _markPaidInFull() {
+    setState(() {
+      _amountPaidController.text = _amountDue.toStringAsFixed(2);
+      _paidDate ??= DateTime.now();
+    });
   }
 
   @override
@@ -124,23 +155,55 @@ class _PaymentFormScreenState extends State<PaymentFormScreen> {
     }
   }
 
+  /// Guards against recording the same rent month twice for one tenant,
+  /// which would double-count in every total.
+  Future<bool> _confirmIfDuplicateMonth(String month) async {
+    final existing = await _repository.getForTenant(_tenantId!);
+    final clash = existing.any(
+      (p) => p.month == month && p.id != widget.payment?.id,
+    );
+    if (!clash || !mounted) return true;
+
+    final proceed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Already recorded'),
+        content: Text(
+          'There is already a payment recorded for $_tenantName in $month. '
+          'Adding another will double-count it in your totals.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Add anyway'),
+          ),
+        ],
+      ),
+    );
+    return proceed ?? false;
+  }
+
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
 
-    setState(() => _saving = true);
+    final month = MonthUtils.format(_selectedMonth);
+    if (!await _confirmIfDuplicateMonth(month)) return;
+    if (!mounted) return;
 
-    final amountDue = double.tryParse(_amountDueController.text.trim()) ?? 0;
-    final amountPaid =
-        double.tryParse(_amountPaidController.text.trim()) ?? 0;
+    setState(() => _saving = true);
 
     final payment = Payment(
       id: widget.payment?.id ?? const Uuid().v4(),
       tenantId: _tenantId!,
-      month: MonthUtils.format(_selectedMonth),
-      amountDue: amountDue,
-      amountPaid: amountPaid,
-      status: _status,
-      paidDate: _paidDate == null ? '' : DateFormat('yyyy-MM-dd').format(_paidDate!),
+      month: month,
+      amountDue: _amountDue,
+      amountPaid: _amountPaid,
+      paidDate:
+          _paidDate == null ? '' : DateFormat('yyyy-MM-dd').format(_paidDate!),
       referenceNumber: _referenceNumberController.text.trim(),
       notes: _notesController.text.trim(),
     );
@@ -173,14 +236,23 @@ class _PaymentFormScreenState extends State<PaymentFormScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _label('Tenant'),
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 4),
-                      child: Text(
-                        _tenantName,
-                        style: const TextStyle(
-                            fontSize: 16, fontWeight: FontWeight.w600),
-                      ),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _label('Tenant'),
+                            Text(
+                              _tenantName,
+                              style: const TextStyle(
+                                  fontSize: 16, fontWeight: FontWeight.w600),
+                            ),
+                          ],
+                        ),
+                        StatusBadge(status: _derivedStatus),
+                      ],
                     ),
                     const SizedBox(height: 16),
                     _label('Month'),
@@ -206,10 +278,16 @@ class _PaymentFormScreenState extends State<PaymentFormScreen> {
                         ),
                       ],
                     ),
-                    const SizedBox(height: 16),
-                    _label('Status'),
-                    _statusDropdown(),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 8),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: TextButton.icon(
+                        onPressed: _markPaidInFull,
+                        icon: const Icon(Icons.done_all, size: 18),
+                        label: const Text('Paid in full'),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
                     _label('Paid date'),
                     _pickerField(
                       text: _paidDate == null
@@ -220,8 +298,8 @@ class _PaymentFormScreenState extends State<PaymentFormScreen> {
                     const SizedBox(height: 16),
                     TextFormField(
                       controller: _referenceNumberController,
-                      decoration:
-                          const InputDecoration(label: Text('Reference number')),
+                      decoration: const InputDecoration(
+                          label: Text('Reference number')),
                     ),
                     const SizedBox(height: 16),
                     TextFormField(
@@ -253,17 +331,13 @@ class _PaymentFormScreenState extends State<PaymentFormScreen> {
     );
   }
 
-  String get _tenantName {
-    for (final tenant in _tenants) {
-      if (tenant.id == _tenantId) return tenant.name;
-    }
-    return '';
-  }
-
   Widget _label(String text) => Padding(
         padding: const EdgeInsets.only(bottom: 8),
         child: Text(text,
-            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+            style: TextStyle(
+                fontWeight: FontWeight.w600,
+                fontSize: 13,
+                color: AppColors.subtleText(context))),
       );
 
   Widget _pickerField({required String text, required VoidCallback onTap}) {
@@ -296,19 +370,6 @@ class _PaymentFormScreenState extends State<PaymentFormScreen> {
         if (double.tryParse(value.trim()) == null) return 'Invalid number';
         return null;
       },
-    );
-  }
-
-  Widget _statusDropdown() {
-    return DropdownButtonFormField<String>(
-      initialValue: _status,
-      decoration: const InputDecoration(),
-      items: const [
-        DropdownMenuItem(value: 'Paid', child: Text('Paid')),
-        DropdownMenuItem(value: 'Partial', child: Text('Partial')),
-        DropdownMenuItem(value: 'Unpaid', child: Text('Unpaid')),
-      ],
-      onChanged: (value) => setState(() => _status = value ?? 'Unpaid'),
     );
   }
 }
